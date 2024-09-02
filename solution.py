@@ -21,10 +21,20 @@ class Agent(object):
         
         self.phoneme_table = reverse_dictionary(phoneme_table)
         self.vocabulary = vocabulary
-        self.multi = 
+        self.multi = [key for key in self.phoneme_table.keys() if len(key) > 1]
         self.best_state = None
-        print(self.phoneme_table)
+        self.result_dict = {}
+        for element in self.multi:
+            first_letter = element[0]      # Extract the first letter
+            
+            # Add to the dictionary or append to the existing list
+            if first_letter in self.result_dict:
+                self.result_dict[first_letter].append(element)
+            else:
+                self.result_dict[first_letter] = [element]
         
+        print(self.phoneme_table)
+            
     def generate_neighbors(self,text, phoneme_table, missing_words):
         words = text.split()
         neighbors = []
@@ -45,7 +55,18 @@ class Agent(object):
         return neighbors
     
     
-    def asr_corrector(self, environment):
+    def find_all_occurrences(text, segment):
+        indices = []
+        start = 0
+        while True:
+            start = text.find(segment, start)
+            if start == -1:
+                break
+            indices.append(start)
+            start += 1  # Move past the last found occurrence
+        return indices
+    
+    def asr_corrector(self, environment,gold):
         """
         Your ASR corrector agent goes here. Environment object has following important members.
         - environment.init_state: Initial state of the environment. This is the text that needs to be corrected.
@@ -55,56 +76,132 @@ class Agent(object):
         """
         self.best_state = environment.init_state
         best_cost = environment.compute_cost(environment.init_state)
-        # print(environment.compute_cost("SHE FOLBED AMONG THE FLICKEWING SHADOWS A GRACEFUL AND HARMONIOUS IMAGE"))
-        # print(environment.compute_cost("SHE FOLBED AMONG THE FLICKERING SHADOWS A GRACEFUL AND HARMONIOUS IMAGE"))
-        # sys.exit()
+        # print(self.best_state)
+        # print(best_cost)
+        # print(gold)
+        # print(environment.compute_cost(gold))
         improved = True
+        txt = self.best_state
+
+        
+        # front_add = False
+        front_word = ""
+        print(self.vocabulary)
+        for vocab_word in self.vocabulary:
+                new_state_start = vocab_word + " " + self.best_state
+                new_cost_start = environment.compute_cost(new_state_start)
+                print(new_state_start)
+  
+                print(vocab_word,new_cost_start, best_cost )
+                if(new_cost_start < best_cost):
+                    # front_add = True
+                    best_cost = new_cost_start
+                    front_word = vocab_word
+                    # print("here")
+        if(front_word != ""):
+            front_word += " "
         while(improved):
             improved = False
-            words = self.best_state.split()
             
-            # for i,word in enumerate(words):
-            #     neighbors = self.generate_neighbors(word,self.phoneme_table, [])
-            #     new_words = self.best_state.split()
-                
-            #     for neighbor in neighbors:
-            #         new_words[i] = neighbor
-            #         new_state = " ".join(new_words)
-            #         new_cost = environment.compute_cost(new_state)
-            #         print(new_state)
-            #         print(new_cost, best_cost)
-                    
-                    # if new_cost < best_cost:
-                    #     self.best_state = new_state
-                    #     best_cost = new_cost
-                    #     improved = True
-                    #     print(self.best_state)
-            for i, word in enumerate(words):
-                char_list = list(word)
-                print(char_list)
-                new_words = self.best_state.split()
-                for j, char in enumerate(word):
+            char_list = list(txt)
+            char_list_copy = char_list.copy()
+            for i, char in enumerate(txt):
                     best_char = char
+                    if(char == ' ' or char_list[i] == ""):
+                        continue
                     if char in self.phoneme_table:
+                        print(char)
                         neighbors = self.phoneme_table[char]
-                        # neighbors.append(char)
                         for neighbor in neighbors:
-                            char_list[j] = neighbor
-                            new_word = "".join(char_list)
-                            new_words[i] = new_word
-                            new_state = " ".join(new_words)
-                            new_cost = environment.compute_cost(new_state)
-                            print(new_state)
+                            char_list[i] = neighbor
+                            new_state = "".join(char_list)
+                            # new_state = front_word + new_state
+                            new_cost = environment.compute_cost((front_word + new_state))
+                            print((front_word + new_state))
                             print(new_cost, best_cost, char, neighbor)
                             
                             if new_cost < best_cost:
                                 best_char = neighbor
                                 self.best_state = new_state
                                 best_cost = new_cost
-                                # improved = True
+                                improved = True
                     
-                    char_list[j] = best_char
-                    new_word = "".join(char_list)
-                    new_words[i] = new_word
-                        
+                    char_list[i] = best_char
+                    if char in self.result_dict:
+                        for segment in self.result_dict[char]:
+                            start = txt.startswith(segment, i)
+                            if not(start):
+                                continue
+                            else:
+                                print(segment)
+                                x = len(segment)
+                                store = ""
+                                best_char = char
+                                for k in range(1,x):
+                                    store += char_list[i+k]
+                                for k in range(1,x):
+                                    char_list[i+k] = ""
+                                for neighbor in self.phoneme_table[segment]:
+                                    char_list[i] = neighbor
+                                    new_state = "".join(char_list)
+                                    # new_state = front_word + new_state
+                                    new_cost = environment.compute_cost((front_word + new_state))
+                                    print((front_word + new_state))
+                                    print(new_cost, best_cost, segment, neighbor)
+                                    if new_cost < best_cost:
+                                        improved = True
+                                        store = ""
+                                        best_char = neighbor
+                                        self.best_state = new_state
+                                        best_cost = new_cost
+                                if(store != ""):
+                                    for k in range(1,x):
+                                        char_list[i+k] = store[k-1]
+                                char_list[i] = best_char
+                                
+                                
+            
+            for i in range(len(char_list_copy)):
+                c = char_list[i]
+                if(c == " "):
+                    continue
+                
+                char_list[i] = char_list_copy[i]
+                if(c == char_list[i]):
+                    continue
+                new_state = "".join(char_list)
+                # new_state = front_word + new_state
+                new_cost = environment.compute_cost((front_word + new_state))
+                print((front_word + new_state))
+                print(new_cost, best_cost, c, char_list_copy[i])
+                if new_cost >= best_cost:
+                    char_list[i] = c
+                else:
+                    self.best_state = new_state
+                    best_cost = new_cost
+            txt = self.best_state
+        
+        self.best_state = front_word + self.best_state
+        
+        last_word = ""
+        for vocab_word in self.vocabulary:
+                new_state_end = self.best_state + " " + vocab_word
+                new_cost_end = environment.compute_cost(new_state_end)
+                print(new_state_end)
+                    
+                print(vocab_word,new_cost_end, best_cost )
+         
+                if new_cost_end < best_cost:
+                    best_cost = new_cost_end
+                    last_word = vocab_word
+        if(last_word != ""):
+            self .best_state = self.best_state + " " + last_word
+        
+        n = len(front_word)
+        s = self.best_state[n:]
+        cost = environment.compute_cost(s)
+        print(s)
+        print(cost, best_cost)
+        if(cost < best_cost):
+            self.best_state = s
         return self.best_state
